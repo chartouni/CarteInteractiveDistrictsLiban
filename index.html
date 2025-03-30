@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte interactive des cazas Liban</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #154377;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        .header {
+            padding: 10px 0 0 0;
+            margin: 0;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .title {
+            color: white;
+            text-align: center;
+            font-size: 28px;
+            margin: 5px 0;
+            padding: 0;
+        }
+        
+        .map-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            margin-top: 10px;
+        }
+        
+        .info-panel {
+            background-color: #f5f5f5;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .info-title {
+            color: #154377;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .instructions ul {
+            padding-left: 20px;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+  <header class="header" align='center'>
+    <a href='https://www.icibeyrouth.com' target='_blank'>
+     <img src='ib-logo.png' alt="ICI Beyrouth Logo">
+    </a>  
+  </header>
+  
+  <div class="container">
+    <h1 class="title">Carte des cazas du Liban</h1>
+    
+    <div class="map-container">
+        <div id="map-area"></div>
+        
+        <div class="info-panel" id="info-panel">
+            <div id="info-content">
+                <p>Survolez ou cliquez sur un district pour voir son nom.</p>
+            </div>
+        </div>
+    </div>
+  </div>
+  
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    // Configuration
+    const width = 800;
+    const height = 600;
+    let selectedDistrict = null;
+    
+    // Créer l'élément SVG
+    const svg = d3.select("#map-area")
+        .append("svg")
+        .attr("width", "100%")
+        .attr("height", height)
+        .attr("viewBox", [0, 0, width, height])
+        .style("font", "12px sans-serif");
+    
+    const g = svg.append("g");
+    
+    // Créer un tooltip
+    const tooltip = d3.select("#tooltip");
+    
+    // Définir une projection pour le Liban
+    const projection = d3.geoMercator()
+        .center([35.9, 33.9])  // Centrer la carte sur le Liban
+        .scale(12000)
+        .translate([width / 2, height / 2]);
+    
+    // Créer un générateur de chemin
+    const path = d3.geoPath().projection(projection);
+    
+    // Charger et traiter les données GeoJSON
+    async function loadMap() {
+        try {
+            // Charger les données
+            const response = await fetch('Lebanon_Districts.json');
+            const geojson = await response.json();
+            
+            // Dessiner les districts
+            g.selectAll("path")
+                .data(topojson.feature(geojson, geojson.objects.Lebanon_Level2).features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .attr("fill", "#f2f2f2")
+                .attr("stroke", "#154377")
+                .attr("stroke-width", 0.5)
+                .attr("class", "district")
+                .attr("id", d => d.properties.shapeName.replace(/\s+/g, '-'))
+                .on("mouseover", function(event, d) {
+                    // Mettre en surbrillance le district
+                    d3.select(this)
+                        .attr("fill", "#ec1c29")
+                        .attr("stroke-width", 1.5);
+                    
+                    // Afficher le tooltip
+                    tooltip
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 30) + "px")
+                        .text(d.properties.shapeName)
+                        .style("opacity", 1);
+                })
+                .on("mouseout", function(d) {
+                    // Rétablir le style normal (sauf si le district est sélectionné)
+                    const districtName = d3.select(this).datum().properties.shapeName;
+                    d3.select(this)
+                        .attr("fill", districtName === selectedDistrict ? "#6290c8" : "#f2f2f2")
+                        .attr("stroke-width", districtName === selectedDistrict ? 1.5 : 0.5);
+                    
+                    // Masquer le tooltip
+                    tooltip.style("opacity", 0);
+                })
+                .on("click", function(event, d) {
+                    // Réinitialiser tous les districts
+                    g.selectAll(".district")
+                        .attr("fill", "#f2f2f2")
+                        .attr("stroke-width", 0.5);
+                    
+                    // Mettre en surbrillance le district sélectionné
+                    d3.select(this)
+                        .attr("fill", "#6290c8")
+                        .attr("stroke-width", 1.5);
+                    
+                    // Mettre à jour le district sélectionné
+                    selectedDistrict = d.properties.shapeName;
+                    
+                    // Mettre à jour le panneau d'informations
+                    updateInfoPanel(selectedDistrict);
+                });
+            
+            // Ajouter un effet de zoom
+            const zoom = d3.zoom()
+                .scaleExtent([1, 5])
+                .on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                });
+            
+            svg.call(zoom);
+            
+        } catch (error) {
+            console.error("Erreur lors du chargement des données GeoJSON:", error);
+            document.getElementById("map-area").innerHTML = 
+                "<p style='color: red; text-align: center;'>Erreur lors du chargement de la carte</p>";
+        }
+    }
+    
+    // Mettre à jour le panneau d'informations avec les détails du district
+    function updateInfoPanel(districtName) {
+        if (districtName) {
+            document.getElementById("info-content").innerHTML = `
+                <h2 class="info-title">District: ${districtName}</h2>
+                <p>Cliquez sur un autre district pour voir ses informations.</p>
+            `;
+        } else {
+            document.getElementById("info-content").innerHTML = `
+                <p>Survolez ou cliquez sur un district pour voir son nom.</p>
+            `;
+        }
+    }
+
+    // Charger la bibliotheque topojson
+    function loadScript(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    }
+
+    // Charge le script topojson et initialise la carte
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js')
+        .then(() => {
+            // Initialiser la carte une fois que topojson est chargé
+            loadMap();
+        })
+        .catch(error => {
+            console.error("Erreur de chargement de topojson:", error);
+            document.getElementById("map-area").innerHTML = 
+                "<p style='color: red; text-align: center;'>Erreur lors du chargement des dépendances</p>";
+        });
+  </script>
+</body>
+</html>
